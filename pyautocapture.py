@@ -18,12 +18,16 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 import shlex
 import subprocess
+import threading
 import time
 import tkinter as tk
 
 import cv2 as cv
 import numpy as np
 import pyautogui
+
+# TODO - Add support for pyscreenshot
+# import pyscreenshot
 
 
 def sleep(secs):
@@ -33,45 +37,67 @@ def sleep(secs):
 
 # WIP
 class Recorder:
-    def _init_(self):
-        pass
+    def __init__(self):
+        self.is_recording = False
+        self.video = None
 
-    def start(self):
+    def start(self, file_extension="avi"):
         size = pyautogui.size()
-        # Define the codec and frame rate
-        codec = cv.VideoWriter_fourcc(*"XVID")
-        frame_rate = 40  # Adjust the frame rate as needed
+        frame_rate = 30
+        file_name = "Screen_Recording." + file_extension
 
-        # Create the VideoWriter object with user-specified codec and frame rate
-        self.video = cv.VideoWriter("Screen_Recording.avi", codec, frame_rate, size)
+        if file_extension == "mp4":
+            codec = cv.VideoWriter_fourcc(*"mp4v")
+        else:
+            codec = cv.VideoWriter_fourcc(*"XVID")
 
-        while True:
+        self.video = cv.VideoWriter(file_name, codec, frame_rate, size)
+
+        self.is_recording = True
+
+        while self.is_recording:
             try:
                 screen_shot = pyautogui.screenshot()
                 recframe = np.array(screen_shot)
                 recframe = cv.cvtColor(recframe, cv.COLOR_BGR2RGB)
-
-                # Resize the frame for optimization
                 recframe = cv.resize(recframe, size)
 
-                self.video.write(recframe)
-                cv.imshow("Recording Preview (Minimize it)", recframe)
+                if self.video is not None:
+                    self.video.write(recframe)
 
                 if cv.waitKey(1) == ord("e"):
+                    self.stop()
                     break
             except Exception as e:
                 print("An error occurred:", e)
+                self.stop()
                 break
-        self.stop()
 
     def stop(self):
+        self.is_recording = False
         cv.destroyAllWindows()
-        self.video.release()
+        if self.video is not None:
+            self.video.release()
 
 
-def record():
+def record(file_extension="mp4"):
+    if file_extension not in ["avi", "mp4"]:
+        raise ValueError(
+            "Invalid file_extension for record(). Valid values are 'avi' or 'mp4'."
+        )
+
+    global recorder
     recorder = Recorder()
-    recorder.start()
+
+    def record_thread():
+        recorder.start(file_extension)
+
+    threading.Thread(target=record_thread).start()
+
+
+def stop_record():
+    global recorder
+    recorder.stop()
 
 
 def click(image=None, x=None, y=None, times=1):
@@ -114,6 +140,7 @@ function_mapping = {
     "shoot": shoot,
     "click": click,
     "record": record,
+    "stop_record": stop_record,
 }
 
 with open("file.txt", "r") as file:
@@ -131,13 +158,11 @@ with open("file.txt", "r") as file:
                 i += 1
                 if i < len(parts):
                     value = parts[i]
-                    # Convert value to integer if possible
                     if value.isdigit():
                         value = int(value)
                     kwargs[arg_name] = value
             else:
                 value = parts[i]
-                # Convert value to integer if possible
                 if value.isdigit():
                     value = int(value)
                 args.append(value)
