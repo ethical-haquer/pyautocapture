@@ -21,6 +21,7 @@ import subprocess
 import threading
 import time
 import tkinter as tk
+from tkinter import scrolledtext
 
 import cv2 as cv
 import numpy as np
@@ -28,6 +29,90 @@ import pyautogui
 
 # TODO - Add support for pyscreenshot
 # import pyscreenshot
+
+file_name = "file.txt"
+save_delay = 1
+save_pending = False
+
+open_apps = []
+
+
+# Function to read the text file and display its content in the text widget
+def display_text_file():
+    text_area.delete("1.0", tk.END)
+    with open(file_name, "r") as file:
+        for line in file:
+            text_area.insert(tk.END, line)
+
+
+# Function to save the text widget content to the text file after a delay
+def save_text_file_delayed(event):
+    global save_pending
+    if not save_pending:
+        save_pending = True
+        print("Saving text file soon")
+        root.after(save_delay * 2000, save_text_file)
+
+
+# Function to save the text widget content to the text file
+def save_text_file():
+    global save_pending
+    save_pending = False
+    print("Saving text file...")
+    with open(file_name, "w") as file:
+        file.write(text_area.get("1.0", tk.END))
+
+
+# Function to read the text file and execute commands
+def read_text_file_and_execute():
+    display_text_file()
+    execute_commands()
+
+
+# Function to execute commands based on the text file content
+def execute_commands():
+    with open(file_name, "r") as file:
+        for line_num, line in enumerate(file, start=1):
+            line = line.strip()
+
+            if not line:
+                print(f"Skipping empty line {line_num}")
+                continue
+
+            parts = shlex.split(line)
+
+            command = parts[0]
+            args = []
+            kwargs = {}
+            i = 1
+            while i < len(parts):
+                if parts[i].startswith("-"):
+                    arg_name = parts[i][1:]
+                    i += 1
+                    if i < len(parts):
+                        value = parts[i]
+                        if value.isdigit():
+                            value = int(value)
+                        kwargs[arg_name] = value
+                else:
+                    value = parts[i]
+                    if value.isdigit():
+                        value = int(value)
+                    args.append(value)
+                i += 1
+
+            if command in function_mapping:
+                try:
+                    function = function_mapping[command]
+                    function(*args, **kwargs)
+                except TypeError as e:
+                    print(
+                        f"Error executing '{command}' command on line {line_num}: {e}"
+                    )
+            elif command.startswith("#"):
+                pass
+            else:
+                print(f"Invalid command on line {line_num}: {command}")
 
 
 def sleep(secs):
@@ -115,11 +200,33 @@ def click(image=None, x=None, y=None, times=1):
         pyautogui.click()
 
 
-def start(command, delay=0.5):
+def create_backdrop():
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    backdrop = tk.Toplevel(root)
+    backdrop.title("backdrop")
+    backdrop.wm_transient(root)
+    backdrop.grab_set()
+    backdrop.geometry(f"{screen_width}x{screen_height}+0+0")
+    backdrop.configure(bg="red")
+
+    backdrop.update()
+    backdrop.update_idletasks()
+
+
+# WIP
+def get_loc():
+    return None
+
+
+def start(command, name, delay=0.5):
     try:
-        print(f"Running '{command}'")
         subprocess.Popen(shlex.split(command))
+        print(f"Running '{command}'")
         sleep(delay)
+        loc = get_loc()
+        open_apps.append({"app": name, "location": loc})
+        print(open_apps)
     except Exception as e:
         print(f"Error executing 'start' command: {e}")
 
@@ -132,8 +239,6 @@ def shoot(file_name):
         print(f"Error executing 'shoot' command: {e}")
 
 
-root = tk.Tk(className="pyautocapture")
-
 function_mapping = {
     "start": start,
     "sleep": sleep,
@@ -141,42 +246,24 @@ function_mapping = {
     "click": click,
     "record": record,
     "stop_record": stop_record,
+    "create_backdrop": create_backdrop,
 }
 
-with open("file.txt", "r") as file:
-    for line_num, line in enumerate(file, start=1):
-        line = line.strip()
-        parts = shlex.split(line)
 
-        command = parts[0]
-        args = []
-        kwargs = {}
-        i = 1
-        while i < len(parts):
-            if parts[i].startswith("-"):
-                arg_name = parts[i][1:]
-                i += 1
-                if i < len(parts):
-                    value = parts[i]
-                    if value.isdigit():
-                        value = int(value)
-                    kwargs[arg_name] = value
-            else:
-                value = parts[i]
-                if value.isdigit():
-                    value = int(value)
-                args.append(value)
-            i += 1
+# Create the root window
+root = tk.Tk(className="pyautocapture")
 
-        if command in function_mapping:
-            try:
-                function = function_mapping[command]
-                function(*args, **kwargs)
-            except TypeError as e:
-                print(f"Error executing '{command}' command on line {line_num}: {e}")
-        elif command.startswith("#"):
-            pass
-        else:
-            print(f"Invalid command on line {line_num}: {command}")
+# Scrolled text widget
+text_area = scrolledtext.ScrolledText(root, wrap=tk.WORD, width=50, height=20)
+text_area.pack()
+
+display_text_file()
+
+# Start button to read the text file and execute commands
+start_button = tk.Button(root, text="Start", command=read_text_file_and_execute)
+start_button.pack()
+
+# Bind the text widget to save the file after a delay when modified
+text_area.bind("<KeyRelease>", save_text_file_delayed)
 
 root.mainloop()
