@@ -16,6 +16,8 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
+# TODO - Use classes
+
 import shlex
 import subprocess
 import threading
@@ -35,9 +37,11 @@ import pyautogui
 file_name = "file.txt"
 save_delay = 1
 save_pending = False
-backdrop_fullscreen = False
 
 open_apps = []
+
+
+# TODO - Figure out why newlines are being added to the text file
 
 
 # Function to read the text file and display its content in the text widget
@@ -203,40 +207,41 @@ def click(image=None, x=None, y=None, times=1):
         pyautogui.click()
 
 
-def create_backdrop(color, app_name=None, fullscreen=True):
-    def toggle_fullscreen(event=None):
-        global backdrop_fullscreen
-        backdrop_fullscreen = not backdrop_fullscreen
-        backdrop.attributes("-fullscreen", backdrop_fullscreen)
-        return "break"
+def create_backdrop(color, name):
+    backdrop = Backdrop(color, name)
 
-    def end_fullscreen(event=None):
-        global backdrop_fullscreen
-        backdrop_fullscreen = False
-        backdrop.attributes("-fullscreen", False)
-        return "break"
 
-    screen_width = root.winfo_screenwidth()
-    screen_height = root.winfo_screenheight()
-    backdrop = tk.Toplevel(root)
-    backdrop.bind("<F11>", toggle_fullscreen)
-    backdrop.bind("<Escape>", end_fullscreen)
-    if app_name == None:
-        title = "Backdrop"
-    else:
-        title = app_name + " Backdrop"
-    backdrop.geometry(f"{screen_width}x{screen_height}+0+0")
-    backdrop.configure(bg=color)
-    backdrop.update_idletasks()
-    sleep(0.2)
-    if fullscreen == True:
-        backdrop.attributes("-fullscreen", True)
-    backdrop.title(title)
-    # backdrop.wm_transient(root)
-    # backdrop.grab_set()
+# TODO - Add a function to destroy the backdrop
+class Backdrop:
+    def __init__(self, color, app_name=None, fullscreen=True):
+        self.fullscreen = False
+        self.screen_width = root.winfo_screenwidth()
+        self.screen_height = root.winfo_screenheight()
+        self.backdrop = tk.Toplevel(root)
+        self.backdrop.bind("<F11>", self.toggle_fullscreen)
+        self.backdrop.bind("<Escape>", self.exit_fullscreen)
+        if app_name == None:
+            self.title = "Backdrop"
+        else:
+            self.title = app_name + " Backdrop"
+        self.backdrop.geometry(f"{self.screen_width}x{self.screen_height}+0+0")
+        self.backdrop.configure(bg=color)
+        self.backdrop.title(self.title)
+        # Actually needed
+        self.backdrop.update_idletasks()
+        sleep(0.2)
+        if fullscreen == True:
+            self.backdrop.attributes("-fullscreen", True)
+        self.backdrop.update()
+        self.backdrop.update_idletasks()
 
-    backdrop.update()
-    backdrop.update_idletasks()
+    def toggle_fullscreen(self, event=None):
+        self.fullscreen = not self.fullscreen
+        self.backdrop.attributes("-fullscreen", self.fullscreen)
+
+    def exit_fullscreen(self, event=None):
+        self.fullscreen = False
+        self.backdrop.attributes("-fullscreen", False)
 
 
 def get_location(old_image_path, new_image_path, threshold):
@@ -263,7 +268,6 @@ def get_location(old_image_path, new_image_path, threshold):
         # cv2.imshow("Result", result)
         # cv2.waitKey(0)
         # cv2.destroyAllWindows()
-
         return x, y, (x + w), (y + h)
 
     else:
@@ -274,7 +278,8 @@ def get_location(old_image_path, new_image_path, threshold):
 def start(command, name, threshold=50, backdrop=True, color="red"):
     try:
         if backdrop == True:
-            create_backdrop(color, name)
+            backdrop = Backdrop(color, name)
+            # create_backdrop(color, name)
             sleep(0.1)
         pyautogui.screenshot("old.png")
         subprocess.Popen(shlex.split(command))
@@ -289,11 +294,12 @@ def start(command, name, threshold=50, backdrop=True, color="red"):
         print(f"Error executing 'start' command: {e}")
 
 
-def move(app):
-    # Move and resize an opened app
+# TODO - Move and resize an opened app
+def move(app, x=0, y=0):
     pass
 
 
+# Once we have the app location, we won't have to use a backdrop again, we'll just keep track of where it is
 def get_app_location(app_name, app_list):
     for app_dict in app_list:
         if app_dict["app"] == app_name:
@@ -301,6 +307,7 @@ def get_app_location(app_name, app_list):
     return None
 
 
+# Take a screenshot
 def shoot(file_name, app=None):
     try:
         if app == None:
