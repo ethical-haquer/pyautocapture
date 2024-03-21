@@ -27,14 +27,15 @@ import cv2
 import numpy as np
 import PIL
 import pyautogui
-from skimage.metrics import structural_similarity
 
-# TODO - Add support for pyscreenshot
+# TODO - Add support for pyscreenshot and mss
 # import pyscreenshot
+# import mss
 
 file_name = "file.txt"
 save_delay = 1
 save_pending = False
+backdrop_fullscreen = False
 
 open_apps = []
 
@@ -202,146 +203,87 @@ def click(image=None, x=None, y=None, times=1):
         pyautogui.click()
 
 
-def create_backdrop():
+def create_backdrop(color, app_name=None, fullscreen=True):
+    def toggle_fullscreen(event=None):
+        global backdrop_fullscreen
+        backdrop_fullscreen = not backdrop_fullscreen
+        backdrop.attributes("-fullscreen", backdrop_fullscreen)
+        return "break"
+
+    def end_fullscreen(event=None):
+        global backdrop_fullscreen
+        backdrop_fullscreen = False
+        backdrop.attributes("-fullscreen", False)
+        return "break"
+
     screen_width = root.winfo_screenwidth()
     screen_height = root.winfo_screenheight()
     backdrop = tk.Toplevel(root)
-    backdrop.title("backdrop")
+    backdrop.bind("<F11>", toggle_fullscreen)
+    backdrop.bind("<Escape>", end_fullscreen)
+    if app_name == None:
+        title = "Backdrop"
+    else:
+        title = app_name + " Backdrop"
+    backdrop.geometry(f"{screen_width}x{screen_height}+0+0")
+    backdrop.configure(bg=color)
+    backdrop.update_idletasks()
+    sleep(0.2)
+    if fullscreen == True:
+        backdrop.attributes("-fullscreen", True)
+    backdrop.title(title)
     # backdrop.wm_transient(root)
     # backdrop.grab_set()
-    backdrop.geometry(f"{screen_width}x{screen_height}+0+0")
-    backdrop.configure(bg="red")
 
     backdrop.update()
     backdrop.update_idletasks()
 
 
-# WIP
-def old_get_loc():
-    pyautogui.screenshot("pre-extract.png")
+def get_location(old_image_path, new_image_path, threshold):
+    old_image = cv2.imread(old_image_path)
+    new_image = cv2.imread(new_image_path)
 
-    # Define the solid color used in the full-screen window (in BGR format)
-    solid_color = np.array([0, 0, 255])  # Assuming red color (BGR format)
+    diff = cv2.absdiff(old_image, new_image)
+    gray_diff = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
 
-    # Create a solid color image based on the defined color
-    height, width = 1080, 1920  # Define the dimensions of the full-screen window
-    solid_color_img = np.full((height, width, 3), solid_color, dtype=np.uint8)
+    # Apply threshold to create a binary image for better contour detection
+    _, thresh = cv2.threshold(gray_diff, threshold, 255, cv2.THRESH_BINARY)
 
-    # Load the screenshot image
-    screenshot_img = cv2.imread("pre-extract.png")
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    # Resize the solid color image to match the dimensions of the screenshot image
-    solid_color_img_resized = cv2.resize(
-        solid_color_img, (screenshot_img.shape[1], screenshot_img.shape[0])
-    )
+    if len(contours) > 0:
+        largest_contour = max(contours, key=cv2.contourArea)
+        x, y, w, h = cv2.boundingRect(largest_contour)
 
-    # Convert the images to grayscale
-    solid_gray = cv2.cvtColor(solid_color_img_resized, cv2.COLOR_BGR2GRAY)
-    screenshot_gray = cv2.cvtColor(screenshot_img, cv2.COLOR_BGR2GRAY)
+        # cv2.imshow("Grayscale Difference Image", gray_diff)
+        # cv2.waitKey(0)
 
-    # Calculate absolute difference between the images
-    diff = cv2.absdiff(solid_gray, screenshot_gray)
+        result = new_image.copy()
+        cv2.rectangle(result, (x, y), (x + w, y + h), (36, 255, 12), 2)
+        # cv2.imshow("Result", result)
+        # cv2.waitKey(0)
+        # cv2.destroyAllWindows()
 
-    # Threshold the difference image to get a binary mask
-    _, threshold = cv2.threshold(diff, 30, 255, cv2.THRESH_BINARY)
+        return x, y, (x + w), (y + h)
 
-    # Find contours in the binary mask
-    contours, _ = cv2.findContours(
-        threshold, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-    )
-
-    # Get the bounding box of the largest contour (assuming the app is the largest difference)
-    x, y, w, h = cv2.boundingRect(contours[0])
-
-    # Extract the section from the screenshot image based on the calculated position and size
-    extracted_section = screenshot_img[y : y + h, x : x + w]
-
-    # Draw a bounding box around the extracted area on the full screenshot image
-    annotated_img = screenshot_img.copy()
-    cv2.rectangle(annotated_img, (x, y), (x + w, y + h), (0, 255, 0), 2)
-
-    # Save the extracted section as a PNG file
-    cv2.imwrite("extracted_section.png", extracted_section)
-
-    # Display the full screenshot image with the extracted area highlighted
-    cv2.imshow("Annotated Screenshot", annotated_img)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-
-    # Print the size and position of the extracted area
-    print("Extracted Area:")
-    print("Position (x, y):", x, y)
-    print("Size (width, height):", w, h)
-    return (x, y, w, h)
+    else:
+        print("No contours found. New app window not detected.")
+        return None
 
 
-def get_loc(old, new):
-    try:
-        # Load images
-        old = str(old)
-        new = str(new)
-        image1 = cv2.imread(old)
-        image2 = cv2.imread(new)
-
-        # Convert to grayscale
-        image1_gray = cv2.cvtColor(image1, cv2.COLOR_BGR2GRAY)
-        image2_gray = cv2.cvtColor(image2, cv2.COLOR_BGR2GRAY)
-
-        # Compute SSIM between the two images
-        (score, diff) = structural_similarity(image1_gray, image2_gray, full=True)
-
-        # The diff image contains the actual image differences between the two images
-        # and is represented as a floating point data type in the range [0,1]
-        # so we must convert the array to 8-bit unsigned integers in the range
-        # [0,255] image1 we can use it with OpenCV
-        diff = (diff * 255).astype("uint8")
-        print("Image Similarity: {:.4f}%".format(score * 100))
-
-        # Threshold the difference image, followed by finding contours to
-        # obtain the regions of the two input images that differ
-        thresh = cv2.threshold(diff, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)[1]
-        contours = cv2.findContours(
-            thresh.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
-        )
-        contours = contours[0] if len(contours) == 2 else contours[1]
-
-        contour_sizes = [(cv2.contourArea(contour), contour) for contour in contours]
-        result = image2.copy()
-        # The largest contour should be the new detected difference
-        if len(contour_sizes) > 0:
-            largest_contour = max(contour_sizes, key=lambda x: x[0])[1]
-            x, y, w, h = cv2.boundingRect(largest_contour)
-            cv2.rectangle(result, (x, y), (x + w, y + h), (36, 255, 12), 2)
-
-        print(f"{x}, {y}, {x+w}, {y+h}")
-        sleep(0.1)
-        cv2.imshow("result", result)
-        cv2.waitKey(0)
-        cv2.imshow("diff", diff)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
-        sleep(0.3)
-        return (x, y, (x + w), (y + h))
-        # diff = PIL.ImageGrab.grab(bbox=(x, y, (x + w), (y + h)), xdisplay=None).save("diff.png")
-    except Exception as e:
-        print(f"e: {e}")
-
-
-def start(command, name, backdrop=True, delay=0.5):
+def start(command, name, threshold=50, backdrop=True, color="red"):
     try:
         if backdrop == True:
-            # create_backdrop()
-            pass
-        sleep(0.1)
+            create_backdrop(color, name)
+            sleep(0.1)
         pyautogui.screenshot("old.png")
         subprocess.Popen(shlex.split(command))
-        sleep(0.5)
+        sleep(1)
         pyautogui.screenshot("new.png")
         print(f"Running '{command}'")
-        # sleep(delay)
-        loc = get_loc("old.png", "new.png")
+        location = get_location("old.png", "new.png", threshold)
         sleep(0.5)
-        open_apps.append({"app": name, "location": loc})
+        open_apps.append({"app": name, "location": location})
         print(open_apps)
     except Exception as e:
         print(f"Error executing 'start' command: {e}")
@@ -352,16 +294,23 @@ def move(app):
     pass
 
 
+def get_app_location(app_name, app_list):
+    for app_dict in app_list:
+        if app_dict["app"] == app_name:
+            return app_dict["location"]
+    return None
+
+
 def shoot(file_name, app=None):
     try:
         if app == None:
             print("Shooting...")
             pyautogui.screenshot(file_name)
         else:
-            # Take screenshot of the specified app
-
-            # screenshot = PIL.ImageGrab.grab(bbox=(x, y, (x + w), (y + h)), xdisplay=None).save("diff.png")
-            pass
+            loc = get_app_location(app, open_apps)
+            print(loc)
+            screenshot = PIL.ImageGrab.grab(bbox=loc, xdisplay=None)
+            screenshot.save(f"{app}.png")
     except Exception as e:
         print(f"Error executing 'shoot' command: {e}")
 
