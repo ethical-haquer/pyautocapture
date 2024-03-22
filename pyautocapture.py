@@ -16,7 +16,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-# TODO - Use classes
+# TODO: Use classes
 
 import shlex
 import subprocess
@@ -30,7 +30,7 @@ import numpy as np
 import PIL
 import pyautogui
 
-# TODO - Add support for pyscreenshot and mss
+# TODO: Add support for pyscreenshot and mss
 # import pyscreenshot
 # import mss
 
@@ -41,7 +41,7 @@ save_pending = False
 open_apps = []
 
 
-# TODO - Figure out why newlines are being added to the text file
+# TODO: Figure out why newlines are being added to the text file
 
 
 # Function to read the text file and display its content in the text widget
@@ -207,11 +207,7 @@ def click(image=None, x=None, y=None, times=1):
         pyautogui.click()
 
 
-def create_backdrop(color, name):
-    backdrop = Backdrop(color, name)
-
-
-# TODO - Add a function to destroy the backdrop
+# TODO: Add a function to destroy the backdrop
 class Backdrop:
     def __init__(self, color, app_name=None, fullscreen=True):
         self.fullscreen = False
@@ -242,6 +238,9 @@ class Backdrop:
     def exit_fullscreen(self, event=None):
         self.fullscreen = False
         self.backdrop.attributes("-fullscreen", False)
+
+    def destroy(self):
+        self.backdrop.destroy()
 
 
 def get_location(old_image_path, new_image_path, threshold):
@@ -279,7 +278,6 @@ def start(command, name, threshold=50, backdrop=True, color="red"):
     try:
         if backdrop == True:
             backdrop = Backdrop(color, name)
-            # create_backdrop(color, name)
             sleep(0.1)
         pyautogui.screenshot("old.png")
         subprocess.Popen(shlex.split(command))
@@ -287,19 +285,22 @@ def start(command, name, threshold=50, backdrop=True, color="red"):
         pyautogui.screenshot("new.png")
         print(f"Running '{command}'")
         location = get_location("old.png", "new.png", threshold)
+        # TODO: Just wait till get_location() is done
         sleep(0.5)
+        backdrop.destroy()
         open_apps.append({"app": name, "location": location})
         print(open_apps)
+
     except Exception as e:
         print(f"Error executing 'start' command: {e}")
 
 
-# TODO - Move and resize an opened app
+# TODO: Move and resize an opened app
 def move(app, x=0, y=0):
     pass
 
 
-# Once we have the app location, we won't have to use a backdrop again, we'll just keep track of where it is
+# Once we have the app location, we won't have to use a backdrop again, we'll just keep track of where the app is
 def get_app_location(app_name, app_list):
     for app_dict in app_list:
         if app_dict["app"] == app_name:
@@ -329,7 +330,6 @@ function_mapping = {
     "click": click,
     "record": record,
     "stop_record": stop_record,
-    "create_backdrop": create_backdrop,
 }
 
 
