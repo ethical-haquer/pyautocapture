@@ -44,7 +44,7 @@ open_apps = []
 # TODO: Figure out why newlines are being added to the text file
 
 
-# Function to read the text file and display its content in the text widget
+# Read the text file and display its content in the text widget
 def display_text_file():
     text_area.delete("1.0", tk.END)
     with open(file_name, "r") as file:
@@ -52,7 +52,7 @@ def display_text_file():
             text_area.insert(tk.END, line)
 
 
-# Function to save the text widget content to the text file after a delay
+# Save the text widget content to the text file after a delay
 def save_text_file_delayed(event):
     global save_pending
     if not save_pending:
@@ -61,7 +61,7 @@ def save_text_file_delayed(event):
         root.after(save_delay * 2000, save_text_file)
 
 
-# Function to save the text widget content to the text file
+# Save the text widget content to the text file
 def save_text_file():
     global save_pending
     save_pending = False
@@ -70,13 +70,13 @@ def save_text_file():
         file.write(text_area.get("1.0", tk.END))
 
 
-# Function to read the text file and execute commands
+# Read the text file and execute commands
 def read_text_file_and_execute():
     display_text_file()
     execute_commands()
 
 
-# Function to execute commands based on the text file content
+# Execute commands contained in the text file
 def execute_commands():
     with open(file_name, "r") as file:
         for line_num, line in enumerate(file, start=1):
@@ -123,7 +123,7 @@ def execute_commands():
 
 
 def sleep(secs):
-    print(f"Sleeping for {secs} seconds")
+    print(f"SLEEPING for {secs} seconds")
     time.sleep(float(secs))
 
 
@@ -194,7 +194,7 @@ def stop_record():
 
 def click(image=None, x=None, y=None, times=1):
     sleep(0.1)
-    print("Clicking...")
+    print("CLICKING...")
     if image != None:
         location = pyautogui.locateOnScreen(image)
         x, y = pyautogui.center(location)
@@ -207,42 +207,29 @@ def click(image=None, x=None, y=None, times=1):
         pyautogui.click()
 
 
-# TODO: Add a function to destroy the backdrop
+# Create a backdrop for detecting where an app is
 class Backdrop:
     def __init__(self, color, app_name=None, fullscreen=True):
-        self.fullscreen = False
-        self.screen_width = root.winfo_screenwidth()
-        self.screen_height = root.winfo_screenheight()
         self.backdrop = tk.Toplevel(root)
-        self.backdrop.bind("<F11>", self.toggle_fullscreen)
-        self.backdrop.bind("<Escape>", self.exit_fullscreen)
         if app_name == None:
             self.title = "Backdrop"
         else:
             self.title = app_name + " Backdrop"
-        self.backdrop.geometry(f"{self.screen_width}x{self.screen_height}+0+0")
+        self.backdrop.attributes("-fullscreen", True)
         self.backdrop.configure(bg=color)
         self.backdrop.title(self.title)
-        # Actually needed
+        self.backdrop.bind("<Escape>", self.exit_fullscreen)
         self.backdrop.update_idletasks()
-        sleep(0.2)
-        if fullscreen == True:
-            self.backdrop.attributes("-fullscreen", True)
-        self.backdrop.update()
-        self.backdrop.update_idletasks()
-
-    def toggle_fullscreen(self, event=None):
-        self.fullscreen = not self.fullscreen
-        self.backdrop.attributes("-fullscreen", self.fullscreen)
 
     def exit_fullscreen(self, event=None):
-        self.fullscreen = False
         self.backdrop.attributes("-fullscreen", False)
 
     def destroy(self):
+        sleep(0.1)
         self.backdrop.destroy()
 
 
+"""
 def get_location(old_image_path, new_image_path, threshold):
     old_image = cv2.imread(old_image_path)
     new_image = cv2.imread(new_image_path)
@@ -264,9 +251,46 @@ def get_location(old_image_path, new_image_path, threshold):
 
         result = new_image.copy()
         cv2.rectangle(result, (x, y), (x + w, y + h), (36, 255, 12), 2)
-        # cv2.imshow("Result", result)
-        # cv2.waitKey(0)
-        # cv2.destroyAllWindows()
+        cv2.imshow("Result", result)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+        return x, y, (x + w), (y + h)
+
+    else:
+        print("No contours found. New app window not detected.")
+        return None
+"""
+
+def get_location(old_image_path, new_image_path, threshold, use_threshold=True):
+    old_image = cv2.imread(old_image_path)
+    new_image = cv2.imread(new_image_path)
+
+    diff = cv2.absdiff(old_image, new_image)
+    gray_diff = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
+
+    if use_threshold:
+        print("Using a threshold")
+        # Apply a threshold to ignore pixels that are only a little different
+        _, thresh = cv2.threshold(gray_diff, threshold, 255, cv2.THRESH_BINARY)
+    else:
+        thresh = gray_diff
+
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    if len(contours) > 0:
+        largest_contour = max(contours, key=cv2.contourArea)
+        x, y, w, h = cv2.boundingRect(largest_contour)
+
+        """
+        cv2.imshow("Grayscale Difference Image", gray_diff)
+        cv2.waitKey(0)
+
+        result = new_image.copy()
+        cv2.rectangle(result, (x, y), (x + w, y + h), (36, 255, 12), 2)
+        cv2.imshow("Result", result)
+        cv2.waitKey(0)
+        cv2.destroyAllWindows()
+        """
         return x, y, (x + w), (y + h)
 
     else:
@@ -274,22 +298,27 @@ def get_location(old_image_path, new_image_path, threshold):
         return None
 
 
-def start(command, name, threshold=50, backdrop=True, color="red"):
+def start(command, name, threshold=50, backdrop=True, color="red", wait=1, use_threshold=False):
     try:
         if backdrop == True:
             backdrop = Backdrop(color, name)
-            sleep(0.1)
+            sleep(0.2)
         pyautogui.screenshot("old.png")
         subprocess.Popen(shlex.split(command))
-        sleep(1)
+        sleep(wait)
+        def destroy():
+            backdrop.destroy()
         pyautogui.screenshot("new.png")
-        print(f"Running '{command}'")
-        location = get_location("old.png", "new.png", threshold)
+        print(f"RUNNING: '{command}'")
+        location = get_location("old.png", "new.png", threshold, use_threshold)
         # TODO: Just wait till get_location() is done
         sleep(0.5)
-        backdrop.destroy()
+        t=threading.Timer(0.2,destroy)
+        t.start()
         open_apps.append({"app": name, "location": location})
-        print(open_apps)
+        # print(open_apps)
+        # Allow time for the backdrop to delete itself
+        sleep(0.1)
 
     except Exception as e:
         print(f"Error executing 'start' command: {e}")
@@ -312,11 +341,12 @@ def get_app_location(app_name, app_list):
 def shoot(file_name, app=None):
     try:
         if app == None:
-            print("Shooting...")
+            print("SHOOTING the desktop...")
             pyautogui.screenshot(file_name)
         else:
+            print(f"SHOOTING {app}...")
             loc = get_app_location(app, open_apps)
-            print(loc)
+            #print(loc)
             screenshot = PIL.ImageGrab.grab(bbox=loc, xdisplay=None)
             screenshot.save(f"{app}.png")
     except Exception as e:
