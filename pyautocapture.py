@@ -41,9 +41,6 @@ save_pending = False
 open_apps = []
 
 
-# TODO: Figure out why newlines are being added to the text file
-
-
 # Read the text file and display its content in the text widget
 def display_text_file():
     text_area.delete("1.0", tk.END)
@@ -66,60 +63,31 @@ def save_text_file():
     global save_pending
     save_pending = False
     print("Saving text file...")
+    text_content = text_area.get("1.0", "end-1c")
     with open(file_name, "w") as file:
-        file.write(text_area.get("1.0", tk.END))
+        file.write(text_content)
 
 
 # Read the text file and execute commands
-def read_text_file_and_execute():
+def read_text_file_and_execute(text_file):
+    save_text_file()
     display_text_file()
-    execute_commands()
+    execute_commands(text_file, function_mapping)
 
 
-# Execute commands contained in the text file
-def execute_commands():
+def execute_commands(file_name, function_mapping):
     with open(file_name, "r") as file:
         for line_num, line in enumerate(file, start=1):
             line = line.strip()
 
-            if not line:
-                print(f"Skipping empty line {line_num}")
+            if not line or line.startswith("#"):
+                print(f"Skipping empty line or comment on line {line_num}")
                 continue
 
-            parts = shlex.split(line)
-
-            command = parts[0]
-            args = []
-            kwargs = {}
-            i = 1
-            while i < len(parts):
-                if parts[i].startswith("-"):
-                    arg_name = parts[i][1:]
-                    i += 1
-                    if i < len(parts):
-                        value = parts[i]
-                        if value.isdigit():
-                            value = int(value)
-                        kwargs[arg_name] = value
-                else:
-                    value = parts[i]
-                    if value.isdigit():
-                        value = int(value)
-                    args.append(value)
-                i += 1
-
-            if command in function_mapping:
-                try:
-                    function = function_mapping[command]
-                    function(*args, **kwargs)
-                except TypeError as e:
-                    print(
-                        f"Error executing '{command}' command on line {line_num}: {e}"
-                    )
-            elif command.startswith("#"):
-                pass
-            else:
-                print(f"Invalid command on line {line_num}: {command}")
+            try:
+                exec(line, function_mapping)
+            except Exception as e:
+                print(f"Error executing command on line {line_num}: {e}")
 
 
 def sleep(secs):
@@ -229,39 +197,19 @@ class Backdrop:
         self.backdrop.destroy()
 
 
-"""
-def get_location(old_image_path, new_image_path, threshold):
-    old_image = cv2.imread(old_image_path)
-    new_image = cv2.imread(new_image_path)
-
-    diff = cv2.absdiff(old_image, new_image)
-    gray_diff = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
-
-    # Apply threshold to create a binary image for better contour detection
-    _, thresh = cv2.threshold(gray_diff, threshold, 255, cv2.THRESH_BINARY)
-
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    if len(contours) > 0:
-        largest_contour = max(contours, key=cv2.contourArea)
-        x, y, w, h = cv2.boundingRect(largest_contour)
-
-        # cv2.imshow("Grayscale Difference Image", gray_diff)
-        # cv2.waitKey(0)
-
-        result = new_image.copy()
-        cv2.rectangle(result, (x, y), (x + w, y + h), (36, 255, 12), 2)
-        cv2.imshow("Result", result)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
-        return x, y, (x + w), (y + h)
-
-    else:
-        print("No contours found. New app window not detected.")
-        return None
-"""
-
-def get_location(old_image_path, new_image_path, threshold, use_threshold=True):
+# TODO: Figure out why changing the fading values and then hitting "Start" again doesn't change the screenshot (it does change the returned result)
+# TODO: Removing fading can be automated, we know what color the backdrop was
+def get_location(
+    old_image_path,
+    new_image_path,
+    threshold,
+    use_threshold=True,
+    fading=None,
+    left_fading=None,
+    right_fading=None,
+    top_fading=None,
+    bottom_fading=None,
+):
     old_image = cv2.imread(old_image_path)
     new_image = cv2.imread(new_image_path)
 
@@ -281,6 +229,27 @@ def get_location(old_image_path, new_image_path, threshold, use_threshold=True):
         largest_contour = max(contours, key=cv2.contourArea)
         x, y, w, h = cv2.boundingRect(largest_contour)
 
+        # TODO: Allow passing the fading argument as a list
+        print(x, y, w, h)
+        if fading:
+            print("Fading is")
+            if left_fading:
+                print(f"left_fading: {left_fading}")
+                x += left_fading
+                w -= left_fading
+            if right_fading:
+                print(f"right_fading: {right_fading}")
+                w -= right_fading
+            if top_fading:
+                print(f"top_fading: {top_fading}")
+                y += top_fading
+                h -= top_fading
+            if bottom_fading:
+                print(f"bottom_fading: {bottom_fading}")
+                # y = y - bottom_fading
+                h -= bottom_fading
+            print(x, y, w, h)
+
         """
         cv2.imshow("Grayscale Difference Image", gray_diff)
         cv2.waitKey(0)
@@ -291,6 +260,7 @@ def get_location(old_image_path, new_image_path, threshold, use_threshold=True):
         cv2.waitKey(0)
         cv2.destroyAllWindows()
         """
+
         return x, y, (x + w), (y + h)
 
     else:
@@ -298,7 +268,20 @@ def get_location(old_image_path, new_image_path, threshold, use_threshold=True):
         return None
 
 
-def start(command, name, threshold=50, backdrop=True, color="red", wait=1, use_threshold=False):
+def start(
+    command,
+    name,
+    threshold=50,
+    backdrop=True,
+    color="red",
+    wait=1,
+    use_threshold=False,
+    fading=None,
+    left_fading=None,
+    right_fading=None,
+    top_fading=None,
+    bottom_fading=None,
+):
     try:
         if backdrop == True:
             backdrop = Backdrop(color, name)
@@ -306,14 +289,26 @@ def start(command, name, threshold=50, backdrop=True, color="red", wait=1, use_t
         pyautogui.screenshot("old.png")
         subprocess.Popen(shlex.split(command))
         sleep(wait)
+
         def destroy():
             backdrop.destroy()
+
         pyautogui.screenshot("new.png")
         print(f"RUNNING: '{command}'")
-        location = get_location("old.png", "new.png", threshold, use_threshold)
+        location = get_location(
+            "old.png",
+            "new.png",
+            threshold,
+            use_threshold,
+            fading,
+            left_fading,
+            right_fading,
+            top_fading,
+            bottom_fading,
+        )
         # TODO: Just wait till get_location() is done
         sleep(0.5)
-        t=threading.Timer(0.2,destroy)
+        t = threading.Timer(0.2, destroy)
         t.start()
         open_apps.append({"app": name, "location": location})
         # print(open_apps)
@@ -346,7 +341,7 @@ def shoot(file_name, app=None):
         else:
             print(f"SHOOTING {app}...")
             loc = get_app_location(app, open_apps)
-            #print(loc)
+            # print(loc)
             screenshot = PIL.ImageGrab.grab(bbox=loc, xdisplay=None)
             screenshot.save(f"{app}.png")
     except Exception as e:
@@ -373,7 +368,9 @@ text_area.pack()
 display_text_file()
 
 # Start button to read the text file and execute commands
-start_button = tk.Button(root, text="Start", command=read_text_file_and_execute)
+start_button = tk.Button(
+    root, text="Start", command=lambda: read_text_file_and_execute(file_name)
+)
 start_button.pack()
 
 # Bind the text widget to save the file after a delay when modified
