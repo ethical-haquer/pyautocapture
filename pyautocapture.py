@@ -94,7 +94,6 @@ def execute_commands(file_name, function_mapping):
             try:
                 exec(line, function_mapping)
 
-
             except Exception as e:
                 print(f"Error executing command on line {line_num}: {e}")
 
@@ -217,47 +216,6 @@ def convert_to_cartesian(x, y):
     return cartesian_x, cartesian_y
 
 
-"""
-def get_approximate_window_position(old_image_path, new_image_path, threshold):
-    global screen_width, screen_height
-    old_image = cv2.imread(old_image_path)
-    new_image = cv2.imread(new_image_path)
-
-    diff = cv2.absdiff(old_image, new_image)
-    gray_diff = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
-
-    if threshold:
-        print("Using a threshold")
-        _, thresh = cv2.threshold(gray_diff, threshold, 255, cv2.THRESH_BINARY)
-    else:
-        thresh = gray_diff
-
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    if len(contours) > 0:
-        largest_contour = max(contours, key=cv2.contourArea)
-        x, y, w, h = cv2.boundingRect(largest_contour)
-
-#        result = new_image.copy()
-#        cv2.rectangle(result, (x, y), (x + w, y + h), (36, 255, 12), 2)
-#        cv2.imshow("Result", result)
-#        cv2.waitKey(0)
-#        cv2.imshow("Grayscale", gray_diff)
-#        cv2.waitKey(0)
-        cv2.destroyAllWindows()
-
-        if w == screen_width and h == screen_height:
-            # Window is full-screen or maximized
-            #y -= top_
-            return x, y, w, h
-        else:
-            return x, y, w, h
-    else:
-        print("No contours found. New app window not detected.")
-        return None
-"""
-
-
 def get_window_data_pywinctl():
     active_window = pywinctl.getActiveWindow()
 
@@ -337,11 +295,6 @@ def start(
             backdrop = Backdrop(color, name)
             sleep(0.2)
 
-        # pyautogui.screenshot("old.png")
-        img = fastgrab_screenshot.Screenshot().capture()
-        im = Image.fromarray(img)
-        im.save("old.png")
-
         print(f"RUNNING: '{command}'")
         subprocess.Popen(shlex.split(command))
         sleep(wait)
@@ -350,15 +303,9 @@ def start(
             print("DESTROYING backdrop...")
             backdrop.destroy()
 
-        # pyautogui.screenshot("new.png")
-        img = fastgrab_screenshot.Screenshot().capture()
-        im = Image.fromarray(img)
-        im.save("new.png")
-
-        # x, y, w, h, window_id = get_window_data("old.png", "new.png", threshold)
         x, y, w, h, window_id = get_window_data()
 
-        # TODO: Just wait till get_window_position() is done
+        # TODO: Just wait till get_window_data() is done
         sleep(0.5)
         t = threading.Timer(0.2, destroy)
         t.start()
@@ -462,7 +409,6 @@ def shoot(file_name, app=None, tool="pyautogui", x_offset=0, y_offset=0):
             if app == None:
                 os.system(f"import -window root {file_name}")
             else:
-                pass
                 os.system(f"import -window {window_id} {file_name}")
 
         elif tool == "gnome-screenshot":
@@ -485,7 +431,6 @@ function_mapping = {
     "record": record,
     "stop_record": stop_record,
 }
-
 
 # Create the root window.
 root = tk.Tk(className="pyautocapture")
