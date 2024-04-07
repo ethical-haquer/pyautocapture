@@ -16,7 +16,8 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-# TODO: Use classes
+# TODO: Use logging
+# TODO: Add implementations for Wayland
 
 import os
 import re
@@ -31,6 +32,7 @@ import cv2
 import numpy as np
 import PIL
 import pyautogui
+import pywinctl
 from fastgrab import screenshot as fastgrab_screenshot
 from PIL import Image
 
@@ -89,12 +91,12 @@ def execute_commands(file_name, function_mapping):
                 continue
             if line.startswith("#"):
                 continue
-            #            try:
-            exec(line, function_mapping)
+            try:
+                exec(line, function_mapping)
 
 
-#            except Exception as e:
-#                print(f"Error executing command on line {line_num}: {e}")
+            except Exception as e:
+                print(f"Error executing command on line {line_num}: {e}")
 
 
 def sleep(secs):
@@ -109,7 +111,8 @@ class Recorder:
         self.video = None
 
     def start(self, file_extension="avi"):
-        size = pyautogui.size()
+        global screen_width, screen_height
+        size = screen_width, screen_height
         frame_rate = 30
         file_name = "Screen_Recording." + file_extension
 
@@ -189,90 +192,14 @@ class Backdrop:
         self.backdrop.destroy()
 
 
-# TODO: Figure out why changing the fading values and then hitting "Start"
-# again doesn't change the screenshot (it does change the returned result).
-# TODO: Removing fading can be automated, we know what color the backdrop is.
-"""
-def get_location(
-    old_image_path,
-    new_image_path,
-    threshold,
-    use_threshold=True,
-    fading=None,
-    left_fading=None,
-    right_fading=None,
-    top_fading=None,
-    bottom_fading=None,
-):
-    old_image = cv2.imread(old_image_path)
-    new_image = cv2.imread(new_image_path)
-
-    diff = cv2.absdiff(old_image, new_image)
-    gray_diff = cv2.cvtColor(diff, cv2.COLOR_BGR2GRAY)
-
-    if use_threshold:
-        print("Using a threshold")
-        # Apply a threshold to ignore pixels that are only a little different
-        _, thresh = cv2.threshold(gray_diff, threshold, 255, cv2.THRESH_BINARY)
-    else:
-        thresh = gray_diff
-
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    if len(contours) > 0:
-        largest_contour = max(contours, key=cv2.contourArea)
-        x, y, w, h = cv2.boundingRect(largest_contour)
-
-        # TODO: Allow passing the fading argument as a list
-        print(x, y, w, h)
-        if fading:
-            print("Fading is")
-            if left_fading:
-                print(f"left_fading: {left_fading}")
-                x += left_fading
-                w -= left_fading
-            if right_fading:
-                print(f"right_fading: {right_fading}")
-                w -= right_fading
-            if top_fading:
-                print(f"top_fading: {top_fading}")
-                y += top_fading
-                h -= top_fading
-            if bottom_fading:
-                print(f"bottom_fading: {bottom_fading}")
-                # y = y - bottom_fading
-                h -= bottom_fading
-            print(x, y, w, h)
-
-        cv2.imshow("Grayscale Difference Image", gray_diff)
-        cv2.waitKey(0)
-
-        result = new_image.copy()
-        cv2.rectangle(result, (x, y), (x + w, y + h), (36, 255, 12), 2)
-        cv2.imshow("Result", result)
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
-
-        top_bar_x, top_bar_y = top_bar_position(x, y, (x + w), (y + h))
-        win_x, win_y, win_w, win_h = get_exact_window_position(top_bar_x, top_bar_y)
-
-        return x, y, (x + w), (y + h)
-    else:
-        print("No contours found. New app window not detected.")
-        return None
-"""
-
-
-def get_window_position(old_image, new_image, threshold):
-    x, y, w, h = get_approximate_window_position(old_image, new_image, threshold)
-    top_bar_x, top_bar_y = top_bar_position(x, y, w, h)
-    x, y, w, h = get_exact_window_position(top_bar_x, top_bar_y)
+def get_window_data():
+    x, y, w, h, window_id = get_window_data_pywinctl()
     x = int(x)
     y = int(y)
     w = int(w)
     h = int(h)
 
-    return x, y, w, h
+    return x, y, w, h, window_id
 
 
 def convert_to_bbox(x, y, w, h):
@@ -284,13 +211,15 @@ def convert_to_bbox(x, y, w, h):
 
 
 def convert_to_cartesian(x, y):
-    screen_width, screen_height = pyautogui.size()
+    global screen_width, screen_height
     cartesian_x = x - screen_width // 2
     cartesian_y = screen_height // 2 - y
     return cartesian_x, cartesian_y
 
 
+"""
 def get_approximate_window_position(old_image_path, new_image_path, threshold):
+    global screen_width, screen_height
     old_image = cv2.imread(old_image_path)
     new_image = cv2.imread(new_image_path)
 
@@ -309,30 +238,37 @@ def get_approximate_window_position(old_image_path, new_image_path, threshold):
         largest_contour = max(contours, key=cv2.contourArea)
         x, y, w, h = cv2.boundingRect(largest_contour)
 
-        #        result = new_image.copy()
-        #        cv2.rectangle(result, (x, y), (x + w, y + h), (36, 255, 12), 2)
-        #        cv2.imshow("Result", result)
-        #        cv2.waitKey(0)
-        #        cv2.destroyAllWindows()
+#        result = new_image.copy()
+#        cv2.rectangle(result, (x, y), (x + w, y + h), (36, 255, 12), 2)
+#        cv2.imshow("Result", result)
+#        cv2.waitKey(0)
+#        cv2.imshow("Grayscale", gray_diff)
+#        cv2.waitKey(0)
+        cv2.destroyAllWindows()
 
-        return x, y, w, h
+        if w == screen_width and h == screen_height:
+            # Window is full-screen or maximized
+            #y -= top_
+            return x, y, w, h
+        else:
+            return x, y, w, h
     else:
         print("No contours found. New app window not detected.")
         return None
+"""
 
 
-def get_exact_window_position(click_x, click_y):
-    move_mouse(click_x, click_y, cartesian=False)
+def get_window_data_pywinctl():
+    active_window = pywinctl.getActiveWindow()
 
-    xwininfo_process = subprocess.Popen(["xwininfo"], stdout=subprocess.PIPE)
-    sleep(0.1)
-    click()
+    win_id = active_window.getHandle()
+    win_id = hex(int(win_id))
 
+    xwininfo_process = subprocess.Popen(
+        ["xwininfo", "-id", win_id], stdout=subprocess.PIPE
+    )
     output, _ = xwininfo_process.communicate()
-
     xwininfo_text = output.decode()
-
-    #    print(xwininfo_text)
 
     absolute_x_pattern = r"Absolute upper-left X:  (\d+)"
     absolute_y_pattern = r"Absolute upper-left Y:  (\d+)"
@@ -344,45 +280,28 @@ def get_exact_window_position(click_x, click_y):
     width_match = re.search(width_pattern, xwininfo_text)
     height_match = re.search(height_pattern, xwininfo_text)
 
-    if absolute_x_match and absolute_y_match and width_match and height_match:
-        x = absolute_x_match.group(1)
-        y = absolute_y_match.group(1)
-        width = width_match.group(1)
-        height = height_match.group(1)
+    x = int(absolute_x_match.group(1))
+    y = int(absolute_y_match.group(1))
+    width = int(width_match.group(1))
+    height = int(height_match.group(1))
 
-        return x, y, width, height
-    else:
-        return None
+    xprop_process = subprocess.Popen(["xprop", "-id", win_id], stdout=subprocess.PIPE)
+    output, _ = xprop_process.communicate()
+    xprop_text = output.decode()
 
+    frame_extents_pattern = (
+        r"_GTK_FRAME_EXTENTS\(CARDINAL\) = (\d+), (\d+), (\d+), (\d+)"
+    )
+    frame_extents_match = re.search(frame_extents_pattern, xprop_text)
 
-# Gets window id using the xwininfo command,
-# which gives you info about whatever window you click on.
-# xwininfo also gives the window size and position,
-# that data could be used as well.
-def get_window_id(click_x, click_y):
-    move_mouse(x=click_x, y=click_y, cartesian=False)
+    if frame_extents_match:
+        left, right, top, bottom = map(int, frame_extents_match.groups())
+        width -= left + right
+        height -= top + bottom
+        x += left
+        y += top
 
-    # Start xwininfo subprocess
-    xwininfo_process = subprocess.Popen(["xwininfo"], stdout=subprocess.PIPE)
-    sleep(0.1)
-    click()
-
-    # Get the output of xwininfo
-    output, _ = xwininfo_process.communicate()
-
-    xwininfo_output = output.decode()
-
-#    print(xwininfo_output)
-
-    id_pattern = r"Window id: (0x[0-9a-fA-F]+)"
-
-    id_match = re.search(id_pattern, xwininfo_output)
-
-    if id_match:
-        window_id = id_match.group(1)
-        return window_id
-    else:
-        return None
+    return x, y, width, height, win_id
 
 
 # Given a window's x, y, w, and h, return the top bar position.
@@ -391,16 +310,15 @@ def top_bar_position(x, y, w, h):
         # x = x + (w / 2)
         x += 25
         y += 30
-        #        print(f"top_bar_pos is: ", x, y)
+        # print(f"top_bar_pos is: ", x, y)
         return x, y
     except Exception as e:
         print(e)
 
 
-def middle_of_window(x, y, w, h):
-    x += w / 2
-    y += h / 2
-    return x, y
+def get_screen_size():
+    width, height = pyautogui.size()
+    return width, height
 
 
 # TODO: Needs work
@@ -413,27 +331,41 @@ def start(
     wait=1,
 ):
     try:
+        global screen_width, screen_height
+        screen_width, screen_height = get_screen_size()
         if backdrop == True:
             backdrop = Backdrop(color, name)
             sleep(0.2)
 
-        pyautogui.screenshot("old.png")
+        # pyautogui.screenshot("old.png")
+        img = fastgrab_screenshot.Screenshot().capture()
+        im = Image.fromarray(img)
+        im.save("old.png")
+
+        print(f"RUNNING: '{command}'")
         subprocess.Popen(shlex.split(command))
         sleep(wait)
 
         def destroy():
+            print("DESTROYING backdrop...")
             backdrop.destroy()
 
-        pyautogui.screenshot("new.png")
-        print(f"RUNNING: '{command}'")
+        # pyautogui.screenshot("new.png")
+        img = fastgrab_screenshot.Screenshot().capture()
+        im = Image.fromarray(img)
+        im.save("new.png")
 
-        location = get_window_position("old.png", "new.png", threshold)
+        # x, y, w, h, window_id = get_window_data("old.png", "new.png", threshold)
+        x, y, w, h, window_id = get_window_data()
+
         # TODO: Just wait till get_window_position() is done
         sleep(0.5)
         t = threading.Timer(0.2, destroy)
         t.start()
-        open_apps.append({"app": name, "location": location})
+
+        open_apps.append({"app": name, "location": (x, y, w, h), "id": window_id})
         print(open_apps)
+
         # Allow time for the backdrop to delete itself
         sleep(0.1)
 
@@ -486,12 +418,25 @@ def get_app_location(app_name, app_list):
         print(f"An exception occured in get_app_location:\n{e}")
 
 
-# This could be better
+def get_window_id(app_name, app_list):
+    try:
+        for app_dict in app_list:
+            if app_dict["app"] == app_name:
+                window_id = app_dict["id"]
+                return window_id
+        return None
+    except Exception as e:
+        print(f"An exception occured in get_window_id:\n{e}")
+
+
+# Takes the screenshots
 def shoot(file_name, app=None, tool="pyautogui", x_offset=0, y_offset=0):
     try:
         if app:
+            # TODO: Add error handling
             print(f"SHOOTING {app} with {tool}...")
             app_location = get_app_location(app, open_apps)
+            window_id = get_window_id(app, open_apps)
             if app_location:
                 x, y, w, h, left, top, right, bottom = app_location
         else:
@@ -500,7 +445,7 @@ def shoot(file_name, app=None, tool="pyautogui", x_offset=0, y_offset=0):
             if app == None:
                 img = fastgrab_screenshot.Screenshot().capture()
                 im = Image.fromarray(img)
-                im.save(f"{file_name}.png")
+                im.save(f"{file_name}")
             else:
                 pass
 
@@ -508,23 +453,17 @@ def shoot(file_name, app=None, tool="pyautogui", x_offset=0, y_offset=0):
             if app == None:
                 pyautogui.screenshot(file_name)
             else:
-                print(f"The loc of {app} is: ", x, y, w, h)
                 screenshot = PIL.ImageGrab.grab(
                     bbox=(left, top, right, bottom), xdisplay=None
                 )
-                screenshot.save(f"{app}.png")
+                screenshot.save(f"{file_name}")
 
         elif tool == "import":
             if app == None:
                 os.system(f"import -window root {file_name}")
             else:
-                # click_x, click_y = top_bar_position(x, y, w, h)
-                click_x, click_y = middle_of_window(x, y, w, h)
-
-                app_id = get_window_id(click_x, click_y)
-
-                print(f"app_id for {app} is: {app_id}")
-                os.system(f"import -window {app_id} {file_name}")
+                pass
+                os.system(f"import -window {window_id} {file_name}")
 
         elif tool == "gnome-screenshot":
             if app == None:
