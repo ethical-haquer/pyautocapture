@@ -29,6 +29,7 @@ import tkinter as tk
 from tkinter import scrolledtext
 
 import cv2
+import mss
 import numpy as np
 import PIL
 import pyautogui
@@ -38,11 +39,8 @@ from PIL import Image
 
 # TODO: Add support for pyscreenshot and mss.
 # import pyscreenshot
-# import mss
 
 file_name = "file2.txt"
-save_delay = 1
-save_pending = False
 
 open_apps = []
 
@@ -55,19 +53,8 @@ def display_text_file():
             text_area.insert(tk.END, line)
 
 
-# Save the text widget content to the text file after a delay.
-def save_text_file_delayed(event):
-    global save_pending
-    if not save_pending:
-        save_pending = True
-        print("Saving text file soon")
-        root.after(save_delay * 2000, save_text_file)
-
-
 # Save the text widget content to the text file.
 def save_text_file():
-    global save_pending
-    save_pending = False
     print("Saving text file...")
     text_content = text_area.get("1.0", "end-1c")
     with open(file_name, "w") as file:
@@ -99,11 +86,11 @@ def execute_commands(file_name, function_mapping):
 
 
 def sleep(secs):
-    #    print(f"SLEEPING for {secs} seconds")
+    # print(f"SLEEPING for {secs} seconds")
     time.sleep(float(secs))
 
 
-# WIP
+# TODO: Fix this
 class Recorder:
     def __init__(self):
         self.is_recording = False
@@ -111,8 +98,9 @@ class Recorder:
 
     def start(self, file_extension="avi"):
         global screen_width, screen_height
-        size = screen_width, screen_height
-        frame_rate = 30
+        monitor = {"top": 0, "left": 0, "width": screen_width, "height": screen_height}
+        area = screen_width, screen_height
+        frame_rate = 60
         file_name = "Screen_Recording." + file_extension
 
         if file_extension == "mp4":
@@ -120,27 +108,29 @@ class Recorder:
         else:
             codec = cv2.VideoWriter_fourcc(*"XVID")
 
-        self.video = cv2.VideoWriter(file_name, codec, frame_rate, size)
+        self.video = cv2.VideoWriter(file_name, codec, frame_rate, area)
 
         self.is_recording = True
 
-        while self.is_recording:
-            try:
-                screen_shot = pyautogui.screenshot()
-                recframe = np.array(screen_shot)
-                recframe = cv2.cvtColor(recframe, cv2.COLOR_BGR2RGB)
-                recframe = cv2.resize(recframe, size)
+        with mss.mss() as sct:
+            while self.is_recording:
+                try:
+                    # screen_shot = pyautogui.screenshot()
+                    recframe = np.array(sct.grab(monitor))
+                    recframe = cv2.cvtColor(recframe, cv2.COLOR_BGR2RGB)
+                    recframe = cv2.resize(recframe, area)
 
-                if self.video is not None:
-                    self.video.write(recframe)
+                    if self.video is not None:
+                        self.video.write(recframe)
 
-                if cv2.waitKey(1) == ord("e"):
+                    if cv2.waitKey(1) == ord("e"):
+                        self.stop()
+                        break
+
+                except Exception as e:
+                    print("An error occurred:", e)
                     self.stop()
                     break
-            except Exception as e:
-                print("An error occurred:", e)
-                self.stop()
-                break
 
     def stop(self):
         self.is_recording = False
@@ -218,6 +208,7 @@ def convert_to_cartesian(x, y):
 
 def get_window_data_pywinctl():
     active_window = pywinctl.getActiveWindow()
+    print(active_window)
 
     win_id = active_window.getHandle()
     win_id = hex(int(win_id))
@@ -284,7 +275,6 @@ def start(
     command,
     name,
     backdrop=True,
-    threshold=None,
     color="red",
     wait=1,
 ):
@@ -295,13 +285,18 @@ def start(
             backdrop = Backdrop(color, name)
             sleep(0.2)
 
+            def destroy():
+                print("DESTROYING backdrop...")
+                backdrop.destroy()
+
+        else:
+
+            def destroy():
+                pass
+
         print(f"RUNNING: '{command}'")
         subprocess.Popen(shlex.split(command))
         sleep(wait)
-
-        def destroy():
-            print("DESTROYING backdrop...")
-            backdrop.destroy()
 
         x, y, w, h, window_id = get_window_data()
 
@@ -376,14 +371,16 @@ def get_window_id(app_name, app_list):
         print(f"An exception occured in get_window_id:\n{e}")
 
 
-# Takes the screenshots
-def shoot(file_name, app=None, tool="pyautogui", x_offset=0, y_offset=0):
+# Does the actual screenshooting
+def shoot(file_name, app=None, tool="import", x_offset=0, y_offset=0):
     try:
         if app:
             # TODO: Add error handling
             print(f"SHOOTING {app} with {tool}...")
             app_location = get_app_location(app, open_apps)
             window_id = get_window_id(app, open_apps)
+            # window = window
+            # raiseWindow
             if app_location:
                 x, y, w, h, left, top, right, bottom = app_location
         else:
@@ -417,7 +414,22 @@ def shoot(file_name, app=None, tool="pyautogui", x_offset=0, y_offset=0):
             else:
                 # TODO: This grabs the current window,
                 # we can use pyautogui to click the correct window before-hand
-                os.system(f"gnome-screenshot --window --file {file_name}")
+                os.system(f"gnome-screenshot --window {window_id} --file {file_name}")
+
+        elif tool == "mss":
+            if app == None:
+                with mss.mss() as sct:
+                    sct.shot(output=f"{file_name}")
+            else:
+                with mss.mss() as sct:
+                    area = {"top": top, "left": left, "width": w, "height": h}
+                    # Grab the data
+                    sct_img = sct.grab(area)
+
+                    # Save to the picture file
+                    mss.tools.to_png(sct_img.rgb, sct_img.size, output=f"{file_name}")
+
+                pass
     except Exception as e:
         print(f"Error executing 'shoot' command: {e}")
 
@@ -428,8 +440,8 @@ function_mapping = {
     "shoot": shoot,
     "move_mouse": move_mouse,
     "click": click,
-    "record": record,
-    "stop_record": stop_record,
+    # "record": record,
+    # "stop_record": stop_record,
 }
 
 # Create the root window.
@@ -447,9 +459,9 @@ display_text_file()
 start_button = tk.Button(
     root, text="Start", command=lambda: read_text_file_and_execute(file_name)
 )
+
 start_button.grid(row=1, column=0, sticky="we")
 
-# Bind the text widget to save the file after a delay when modified.
-text_area.bind("<KeyRelease>", save_text_file_delayed)
+root.protocol("WM_DELETE_WINDOW", save_text_file())
 
 root.mainloop()
